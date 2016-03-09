@@ -14,20 +14,12 @@
         },
         onEditableSave: function (field, row, oldValue, $el) {
             return false;
-        },
-        onEditableShown: function (field, row, $el, editable) {
-            return false;
-        },
-        onEditableHidden: function (field, row, $el, reason) {
-            return false;
         }
     });
 
     $.extend($.fn.bootstrapTable.Constructor.EVENTS, {
         'editable-init.bs.table': 'onEditableInit',
-        'editable-save.bs.table': 'onEditableSave',
-        'editable-shown.bs.table': 'onEditableShown',
-        'editable-hidden.bs.table': 'onEditableHidden'
+        'editable-save.bs.table': 'onEditableSave'
     });
 
     var BootstrapTable = $.fn.bootstrapTable.Constructor,
@@ -62,7 +54,7 @@
 
             var _formatter = column.formatter;
             column.formatter = function (value, row, index) {
-                var result = _formatter ? _formatter(value, row, index) : value;
+                /*var result = _formatter ? _formatter(value, row, index) : value;
 
                 $.each(column, processDataOptions);
 
@@ -76,7 +68,49 @@
                     ' data-value="' + result + '"',
                     editableDataMarkup.join(''),
                     '>' + '</a>'
-                ].join('');
+                ].join('');*/
+                var result = _formatter ? _formatter(value, row, index) : value;
+
+                if (row.canEdit) {
+                    var sEditType = column.editable.type;
+                    var sEditSource = column.editable.source;
+                    var editElMap = {
+                        number  : [
+                            '<input type="number" class="tableInputNumber"', ' data-name="' + column.field + '"',
+                            ' data-pk="' + row[that.options.idField] + '"',
+                            ' data-value="' + result + '"',
+                            ' value="' + result + '"/>'
+                        ],
+                        select  : [
+                            "<select class='tableInputSelect' size=1", ' data-name="' + column.field + '"',
+                            ' data-pk="' + row[that.options.idField] + '"',
+                            ' data-value="' + result + '">'
+                        ],
+                        text    : [
+                            '<input class="tableInputText" type="text"', ' data-name="' + column.field + '"',
+                            ' data-pk="' + row[that.options.idField] + '"',
+                            ' data-value="' + result + '"',
+                            ' value="' + result + '"/>'
+                        ],
+                        textarea: [
+                            '<textarea class="tableInputArea" rows=2 style="font-size:10px;"', ' data-name="' + column.field + '"',
+                            ' data-pk="' + row[that.options.idField] + '"',
+                            ' data-value="' + result + '">',
+                            g,
+                            "</textarea>"
+                        ]
+                    };
+                    var sTargetEl = editMap[sEditType];
+                    if (sEditType == 'select') {
+                        _.forEach(sEditSource, function(val) {
+                            sTargetEl.push(val.value == result ? '<option value="' + val.value + '" selected>' + val.text + "</option>" : '<option value="' + val.value + '">' + val.text + "</option>");
+                        });
+                        sTargetEl.push('</select>');
+                    }
+                    return sTargetEl.join('');
+                }
+
+                return result;
             };
         });
     };
@@ -93,34 +127,33 @@
             if (!column.editable) {
                 return;
             }
-
-            that.$body.find('a[data-name="' + column.field + '"]').editable(column.editable)
-                .off('save').on('save', function (e, params) {
-                    var data = that.getData(),
-                        index = $(this).parents('tr[data-index]').data('index'),
-                        row = data[index],
-                        oldValue = row[column.field];
-
-                    $(this).data('value', params.submitValue);
-                    row[column.field] = params.submitValue;
-                    that.trigger('editable-save', column.field, row, oldValue, $(this));
-                });
-            that.$body.find('a[data-name="' + column.field + '"]').editable(column.editable)
-                .off('shown').on('shown', function (e, editable) {
-                    var data = that.getData(),
-                        index = $(this).parents('tr[data-index]').data('index'),
-                        row = data[index];
-                    
-                    that.trigger('editable-shown', column.field, row, $(this), editable);
-                });
-            that.$body.find('a[data-name="' + column.field + '"]').editable(column.editable)
-                .off('hidden').on('hidden', function (e, reason) {
-                    var data = that.getData(),
-                        index = $(this).parents('tr[data-index]').data('index'),
-                        row = data[index];
-                    
-                    that.trigger('editable-hidden', column.field, row, $(this), reason);
-                });
+            that.$body.find('input[data-name="' + column.field + '"]').off('change').on('change', function() {
+                var data = that.getData(),
+                    index = $(this).parents('tr[data-index]').data('index'),
+                    row = data[index],
+                    oldValue = row[column.field];
+                row[column.field] = $(this).val();
+                that.trigger('editable-save', column.field, row, oldValue, $(this));
+                that.resetFooter();
+            });
+            that.$body.find('select[data-name="' + column.field + '"]').off('change').on('change', function() {
+                var data = that.getData(),
+                    index = $(this).parents('tr[data-index]').data('index'),
+                    row = data[index],
+                    oldValue = row[column.field];
+                row[column.field] = $(this).val();
+                that.trigger('editable-save', column.field, row, oldValue, $(this));
+                that.resetFooter();
+            });
+            that.$body.find('textarea[data-name="' + column.field + '"]').off('change').on('change', function() {
+                var data = that.getData(),
+                    index = $(this).parents('tr[data-index]').data('index'),
+                    row = data[index],
+                    oldValue = row[column.field];
+                row[column.field] = $(this).val();
+                that.trigger('editable-save', column.field, row, oldValue, $(this));
+                that.resetFooter();
+            });
         });
         this.trigger('editable-init');
     };

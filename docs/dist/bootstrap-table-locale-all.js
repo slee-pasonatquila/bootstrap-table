@@ -842,6 +842,7 @@
  * Bootstrap Table Italian translation
  * Author: Davide Renzi<davide.renzi@gmail.com>
  * Author: Davide Borsatto <davide.borsatto@gmail.com>
+ * Author: Alessio Felicioni <alessio.felicioni@gmail.com>
  */
 (function ($) {
     'use strict';
@@ -854,7 +855,7 @@
             return pageNumber + ' elementi per pagina';
         },
         formatShowingRows: function (pageFrom, pageTo, totalRows) {
-            return 'Pagina ' + pageFrom + ' di ' + pageTo + ' (' + totalRows + ' records)';
+            return 'Pagina ' + pageFrom + ' di ' + pageTo + ' (' + totalRows + ' elementi)';
         },
         formatSearch: function () {
             return 'Cerca';
@@ -870,6 +871,9 @@
         },
         formatColumns: function () {
             return 'Colonne';
+        },
+        formatAllRows: function () {
+            return 'Tutto';
         }
     };
 
