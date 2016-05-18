@@ -4,7 +4,7 @@
  * https://github.com/wenzhixin/bootstrap-table/
  */
 
-!function ($) {
+(function ($) {
     'use strict';
 
     // TOOLS DEFINITION
@@ -53,18 +53,6 @@
             return true;
         });
         return index;
-    };
-
-    var getFieldIndexFromColumnIndex = function (columns, fieldIndex) {
-        $.each(columns, function (i, column) {
-          if (!column.visible) {
-            fieldIndex--;
-          }
-          if (i == fieldIndex) {
-            return false;
-          }
-        });
-        return fieldIndex;
     };
 
     // http://jsfiddle.net/wenyi/47nz7ez9/3/
@@ -241,6 +229,49 @@
         return !!(navigator.userAgent.indexOf("MSIE ") > 0 || !!navigator.userAgent.match(/Trident.*rv\:11\./));
     };
 
+    var objectKeys = function () {
+        // From https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/keys
+        if (!Object.keys) {
+            Object.keys = (function() {
+                var hasOwnProperty = Object.prototype.hasOwnProperty,
+                    hasDontEnumBug = !({ toString: null }).propertyIsEnumerable('toString'),
+                    dontEnums = [
+                        'toString',
+                        'toLocaleString',
+                        'valueOf',
+                        'hasOwnProperty',
+                        'isPrototypeOf',
+                        'propertyIsEnumerable',
+                        'constructor'
+                    ],
+                    dontEnumsLength = dontEnums.length;
+
+                return function(obj) {
+                    if (typeof obj !== 'object' && (typeof obj !== 'function' || obj === null)) {
+                        throw new TypeError('Object.keys called on non-object');
+                    }
+
+                    var result = [], prop, i;
+
+                    for (prop in obj) {
+                        if (hasOwnProperty.call(obj, prop)) {
+                            result.push(prop);
+                        }
+                    }
+
+                    if (hasDontEnumBug) {
+                        for (i = 0; i < dontEnumsLength; i++) {
+                            if (hasOwnProperty.call(obj, dontEnums[i])) {
+                                result.push(dontEnums[i]);
+                            }
+                        }
+                    }
+                    return result;
+                };
+            }());
+        }
+    };
+
     // BOOTSTRAP TABLE CLASS DEFINITION
     // ======================
 
@@ -261,6 +292,7 @@
         undefinedText: '-',
         sortName: undefined,
         sortOrder: 'asc',
+        sortStable: false,
         striped: false,
         columns: [[]],
         data: [],
@@ -421,6 +453,9 @@
         onRefreshOptions: function (options) {
             return false;
         },
+        onRefresh: function (params) {
+          return false;
+        },
         onResetView: function () {
             return false;
         }
@@ -428,12 +463,12 @@
 
     BootstrapTable.LOCALES = [];
 
-    BootstrapTable.LOCALES['en-US'] = BootstrapTable.LOCALES['en'] = {
+    BootstrapTable.LOCALES['en-US'] = BootstrapTable.LOCALES.en = {
         formatLoadingMessage: function () {
             return 'Loading, please wait...';
         },
         formatRecordsPerPage: function (pageNumber) {
-            return sprintf('%s records per page', pageNumber);
+            return sprintf('%s rows per page', pageNumber);
         },
         formatShowingRows: function (pageFrom, pageTo, totalRows) {
             return sprintf('Showing %s to %s of %s rows', pageFrom, pageTo, totalRows);
@@ -520,7 +555,8 @@
         'expand-row.bs.table': 'onExpandRow',
         'collapse-row.bs.table': 'onCollapseRow',
         'refresh-options.bs.table': 'onRefreshOptions',
-        'reset-view.bs.table': 'onResetView'
+        'reset-view.bs.table': 'onResetView',
+        'refresh.bs.table': 'onRefresh'
     };
 
     BootstrapTable.prototype.init = function () {
@@ -541,7 +577,7 @@
         if (this.options.locale) {
             var parts = this.options.locale.split(/-|_/);
             parts[0].toLowerCase();
-            parts[1] && parts[1].toUpperCase();
+            if (parts[1]) parts[1].toUpperCase();
             if ($.fn.bootstrapTable.locales[this.options.locale]) {
                 // locale as requested
                 $.extend(this.options, $.fn.bootstrapTable.locales[this.options.locale]);
@@ -613,7 +649,7 @@
             $(this).find('th').each(function () {
                 // Fix #2014 - getFieldIndex and elsewhere assume this is string, causes issues if not
                 if (typeof $(this).data('field') !== 'undefined') {
-                    $(this).data('field', new String($(this).data('field')).valueOf()); 
+                    $(this).data('field', $(this).data('field') + '');
                 }
                 column.push($.extend({}, {
                     title: $(this).html(),
@@ -649,7 +685,6 @@
             return;
         }
 
-        this.fromHtml = true;
         var m = [];
         this.$el.find('>tbody>tr').each(function (y) {
             var row = {};
@@ -690,6 +725,7 @@
             data.push(row);
         });
         this.options.data = data;
+        if (data.length) this.fromHtml = true;
     };
 
     BootstrapTable.prototype.initHeader = function () {
@@ -712,7 +748,7 @@
         $.each(this.options.columns, function (i, columns) {
             html.push('<tr>');
 
-            if (i == 0 && !that.options.cardView && that.options.detailView) {
+            if (i === 0 && !that.options.cardView && that.options.detailView) {
                 html.push(sprintf('<th class="detail" rowspan="%s"><div class="fht-cell"></div></th>',
                     that.options.columns.length));
             }
@@ -809,8 +845,11 @@
         });
         this.$container.off('click', '.th-inner').on('click', '.th-inner', function (event) {
             var target = $(this);
-            if (target.closest('.bootstrap-table')[0] !== that.$container[0])
-                return false;
+
+            if (that.options.detailView) {
+                if (target.closest('.bootstrap-table')[0] !== that.$container[0])
+                    return false;
+            }
 
             if (that.options.sortable && target.parent().data().sortable) {
                 that.onSort(event);
@@ -896,6 +935,12 @@
         }
 
         if (index !== -1) {
+            if (this.options.sortStable) {
+                $.each(this.data, function (i, row) {
+                    if (!row.hasOwnProperty('_position')) row._position = i;
+                });
+            }
+
             this.data.sort(function (a, b) {
                 if (that.header.sortNames[index]) {
                     name = that.header.sortNames[index];
@@ -914,6 +959,11 @@
                 }
                 if (bb === undefined || bb === null) {
                     bb = '';
+                }
+
+                if (that.options.sortStable && aa === bb) {
+                    aa = a._position;
+                    bb = b._position;
                 }
 
                 // IF both values are numeric, do a numeric comparison
@@ -981,13 +1031,13 @@
             $search,
             switchableCount = 0;
 
-        if (this.$toolbar.find('.bars').children().length) {
+        if (this.$toolbar.find('.bs-bars').children().length) {
             $('body').append($(this.options.toolbar));
         }
         this.$toolbar.html('');
 
         if (typeof this.options.toolbar === 'string' || typeof this.options.toolbar === 'object') {
-            $(sprintf('<div class="bars pull-%s"></div>', this.options.toolbarAlign))
+            $(sprintf('<div class="bs-bars pull-%s"></div>', this.options.toolbarAlign))
                 .appendTo(this.$toolbar)
                 .append($(this.options.toolbar));
         }
@@ -1124,6 +1174,10 @@
                     }
                 }
 
+                if ($.inArray(event.keyCode, [37, 38, 39, 40]) > -1) {
+                    return;
+                }
+
                 clearTimeout(timeoutId); // doesn't matter if it's 0
                 timeoutId = setTimeout(function () {
                     that.onSearch(event);
@@ -1169,7 +1223,9 @@
                 this.options.customSearch.apply(this, [this.searchText]);
                 return;
             }
-            var s = this.searchText && this.searchText.toLowerCase();
+
+            var s = !this.options.escape ? this.searchText && escapeHTML(this.searchText).toLowerCase()
+                                            : this.searchText && this.searchText.toLowerCase();
             var f = $.isEmptyObject(this.filterColumns) ? null : this.filterColumns;
 
             // Check filter
@@ -1233,7 +1289,8 @@
             $first, $pre,
             $next, $last,
             $number,
-            data = this.getData();
+            data = this.getData(),
+            pageList = this.options.pageList;
 
         if (this.options.sidePagination !== 'server') {
             this.options.totalRows = data.length;
@@ -1293,8 +1350,7 @@
                     ' <span class="caret"></span>',
                     '</button>',
                     '<ul class="dropdown-menu" role="menu">'
-                ],
-                pageList = this.options.pageList;
+                ];
 
             if (typeof this.options.pageList === 'string') {
                 var list = this.options.pageList.replace('[', '').replace(']', '')
@@ -1479,7 +1535,7 @@
     };
 
     BootstrapTable.prototype.onPagePre = function (event) {
-        if ((this.options.pageNumber - 1) == 0) {
+        if ((this.options.pageNumber - 1) === 0) {
             this.options.pageNumber = this.options.totalPages;
         } else {
             this.options.pageNumber--;
@@ -1575,7 +1631,7 @@
             );
 
             if (this.options.cardView) {
-                html.push(sprintf('<td colspan="%s">', this.header.fields.length));
+                html.push(sprintf('<td colspan="%s"><div class="card-views">', this.header.fields.length));
             }
 
             if (!this.options.cardView && this.options.detailView) {
@@ -1630,7 +1686,7 @@
                     title_ = sprintf(' title="%s"', item['_' + field + '_title']);
                 }
                 cellStyle = calculateObjectValue(that.header,
-                    that.header.cellStyles[j], [value, item, i], cellStyle);
+                    that.header.cellStyles[j], [value, item, i, field], cellStyle);
                 if (cellStyle.classes) {
                     class_ = sprintf(' class="%s"', cellStyle.classes);
                 }
@@ -1702,7 +1758,7 @@
             });
 
             if (this.options.cardView) {
-                html.push('</td>');
+                html.push('</div></td>');
             }
 
             html.push('</tr>');
@@ -1728,7 +1784,8 @@
                 $tr = $td.parent(),
                 item = that.data[$tr.data('index')],
                 index = $td[0].cellIndex,
-                field = that.header.fields[that.options.detailView && !that.options.cardView ? index - 1 : index],
+                fields = that.getVisibleFields(),
+                field = fields[that.options.detailView && !that.options.cardView ? index - 1 : index],
                 column = that.columns[getFieldIndex(that.columns, field)],
                 value = getItemField(item, field, that.options.escape);
 
@@ -1737,7 +1794,7 @@
             }
 
             that.trigger(e.type === 'click' ? 'click-cell' : 'dbl-click-cell', field, value, item, $td);
-            that.trigger(e.type === 'click' ? 'click-row' : 'dbl-click-row', item, $tr);
+            that.trigger(e.type === 'click' ? 'click-row' : 'dbl-click-row', item, $tr, field);
 
             // if click to select - then trigger the checkbox/radio click
             if (e.type === 'click' && that.options.clickToSelect && column.clickToSelect) {
@@ -1809,7 +1866,7 @@
             }
 
             var field = that.header.fields[i],
-                fieldIndex = getFieldIndexFromColumnIndex(that.columns, i);
+                fieldIndex = $.inArray(field, that.getVisibleFields());
 
             if (that.options.detailView && !that.options.cardView) {
                 fieldIndex += 1;
@@ -1841,7 +1898,7 @@
         this.trigger('post-body', data);
     };
 
-    BootstrapTable.prototype.initServer = function (silent, query) {
+    BootstrapTable.prototype.initServer = function (silent, query, url) {
         var that = this,
             data = {},
             params = {
@@ -1851,13 +1908,13 @@
             },
             request;
 
-        if(this.options.pagination) {
+        if (this.options.pagination) {
             params.pageSize = this.options.pageSize === this.options.formatAllRows() ?
                 this.options.totalRows : this.options.pageSize;
             params.pageNumber = this.options.pageNumber;
         }
 
-        if (!this.options.url && !this.options.ajax) {
+        if (!(url || this.options.url) && !this.options.ajax) {
             return;
         }
 
@@ -1867,16 +1924,17 @@
                 sort: params.sortName,
                 order: params.sortOrder
             };
+
             if (this.options.pagination) {
-                params.limit = this.options.pageSize === this.options.formatAllRows() ?
-                    this.options.totalRows : this.options.pageSize;
                 params.offset = this.options.pageSize === this.options.formatAllRows() ?
                     0 : this.options.pageSize * (this.options.pageNumber - 1);
+                params.limit = this.options.pageSize === this.options.formatAllRows() ?
+                    this.options.totalRows : this.options.pageSize;
             }
         }
 
         if (!($.isEmptyObject(this.filterColumnsPartial))) {
-            params['filter'] = JSON.stringify(this.filterColumnsPartial, null);
+            params.filter = JSON.stringify(this.filterColumnsPartial, null);
         }
 
         data = calculateObjectValue(this.options, this.options.queryParams, [params], data);
@@ -1893,7 +1951,7 @@
         }
         request = $.extend({}, calculateObjectValue(null, this.options.ajaxOptions), {
             type: this.options.method,
-            url: this.options.url,
+            url:  url || this.options.url,
             data: this.options.contentType === 'application/json' && this.options.method === 'post' ?
                 JSON.stringify(data) : data,
             cache: this.options.cache,
@@ -2040,7 +2098,8 @@
             that.$header_.find(sprintf('th[data-field="%s"]', $(this).data('field'))).data($(this).data());
         });
 
-        var visibleFields = this.getVisibleFields();
+        var visibleFields = this.getVisibleFields(),
+            $ths = this.$header_.find('th');
 
         this.$body.find('>tr:first-child:not(.no-records-found) > *').each(function (i) {
             var $this = $(this),
@@ -2053,8 +2112,12 @@
                 index = i - 1;
             }
 
-            that.$header_.find(sprintf('th[data-field="%s"]', visibleFields[index]))
-                .find('.fht-cell').width($this.innerWidth());
+            var $th = that.$header_.find(sprintf('th[data-field="%s"]', visibleFields[index]));
+            if ($th.length > 1) {
+                $th = $($ths[$this[0].cellIndex]);
+            }
+
+            $th.find('.fht-cell').width($this.innerWidth());
         });
         // horizontal scroll event
         // TODO: it's probably better improving the layout than binding to scroll event
@@ -2392,9 +2455,10 @@
             if (rowId === -1) {
                 return;
             }
-            $.extend(that.data[rowId], params.row);
+            $.extend(that.options.data[rowId], params.row);
         });
 
+        this.initSearch();
         this.initSort();
         this.initBody(true);
     };
@@ -2418,9 +2482,10 @@
             if (!params.hasOwnProperty('index') || !params.hasOwnProperty('row')) {
                 return;
             }
-            $.extend(that.data[params.index], params.row);
+            $.extend(that.options.data[params.index], params.row);
         });
 
+        this.initSearch();
         this.initSort();
         this.initBody(true);
     };
@@ -2500,7 +2565,7 @@
     BootstrapTable.prototype.getSelections = function () {
         var that = this;
 
-        return $.grep(this.data, function (row) {
+        return $.grep(this.options.data, function (row) {
             return row[that.header.stateField];
         });
     };
@@ -2626,10 +2691,10 @@
 
     BootstrapTable.prototype.refresh = function (params) {
         if (params && params.url) {
-            this.options.url = params.url;
             this.options.pageNumber = 1;
         }
-        this.initServer(params && params.silent, params && params.query);
+        this.initServer(params && params.silent, params && params.query, params && params.url);
+        this.trigger('refresh', params);
     };
 
     BootstrapTable.prototype.resetWidth = function () {
@@ -2912,7 +2977,9 @@
         getFieldIndex: getFieldIndex,
         compareObjects: compareObjects,
         calculateObjectValue: calculateObjectValue,
-        getItemField: getItemField
+        getItemField: getItemField,
+        objectKeys: objectKeys,
+        isIEBrowser: isIEBrowser
     };
 
     // BOOTSTRAP TABLE INIT
@@ -2921,4 +2988,4 @@
     $(function () {
         $('[data-toggle="table"]').bootstrapTable();
     });
-}(jQuery);
+})(jQuery);
