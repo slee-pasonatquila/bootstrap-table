@@ -381,6 +381,10 @@
             return {};
         },
 
+        footerStyle: function (row, index) {
+            return {};
+        },
+
         onAll: function (name, args) {
             return false;
         },
@@ -1232,6 +1236,7 @@
             this.data = f ? $.grep(this.options.data, function (item, i) {
                 for (var key in f) {
                     if ($.isArray(f[key])) {
+                        // TODO: remove this extra if statement
                         if ($.inArray(item[key], f[key]) === -1) {
                             return false;
                         }
@@ -1973,7 +1978,10 @@
         if (this.options.ajax) {
             calculateObjectValue(this, this.options.ajax, [request], null);
         } else {
-            $.ajax(request);
+            if (this._xhr && this._xhr.readyState !== 4) {
+                this._xhr.abort();
+            }
+            this._xhr = $.ajax(request);
         }
     };
 
@@ -2145,8 +2153,11 @@
         }
 
         $.each(this.columns, function (i, column) {
-            var falign = '', // footer align style
-                style = '',
+            var key,
+                falign = '', // footer align style
+                valign = '',
+                csses = [],
+                style = {},
                 class_ = sprintf(' class="%s"', column['class']);
 
             if (!column.visible) {
@@ -2158,9 +2169,17 @@
             }
 
             falign = sprintf('text-align: %s; ', column.falign ? column.falign : column.align);
-            style = sprintf('vertical-align: %s; ', column.valign);
+            valign = sprintf('vertical-align: %s; ', column.valign);
 
-            html.push('<td', class_, sprintf(' style="%s"', falign + style), '>');
+            style = calculateObjectValue(null, that.options.footerStyle);
+
+            if (style && style.css) {
+                for (key in style.css) {
+                    csses.push(key + ': ' + style.css[key]);
+                }
+            }
+
+            html.push('<td', class_, sprintf(' style="%s"', falign + valign + csses.concat().join('; ')), '>');
             html.push('<div class="th-inner">');
 
             html.push(calculateObjectValue(column, column.footerFormatter, [data], '&nbsp;') || '&nbsp;');
